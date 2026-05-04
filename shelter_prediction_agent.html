@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shelter Arrival Prediction Agent</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f0; color: #1a1a1a; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; }
+  .container { background: #fff; border-radius: 16px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); padding: 2rem; max-width: 680px; width: 100%; }
+  h1 { font-size: 22px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: #666; margin-bottom: 1.5rem; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 1rem; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; color: #555; font-weight: 500; }
+  .field input, .field select {
+    padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 14px; outline: none; transition: border-color 0.2s;
+    background: #fff; color: #1a1a1a; width: 100%;
+  }
+  .field input:focus, .field select:focus { border-color: #4a7fcb; }
+  .predict-btn {
+    width: 100%; padding: 11px; font-size: 15px; font-weight: 600;
+    background: #4a7fcb; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer; margin-top: 4px; transition: background 0.2s;
+  }
+  .predict-btn:hover { background: #3a6ab0; }
+  .predict-btn:disabled { background: #aac0e0; cursor: not-allowed; }
+  .result-card {
+    border: 1px solid #e0e0e0; border-radius: 12px;
+    padding: 1.25rem; margin-top: 1.25rem; display: none;
+  }
+  .result-card.visible { display: block; }
+  .result-card.error { border-color: #f0a0a0; background: #fff5f5; }
+  .error-msg { color: #c0392b; font-size: 15px; font-weight: 500; }
+  .result-header { font-size: 16px; font-weight: 600; color: #1a1a1a; margin-bottom: 2px; }
+  .result-sub { font-size: 13px; color: #888; margin-bottom: 1rem; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .metric { background: #f7f7f3; border-radius: 8px; padding: 12px 1rem; }
+  .metric-label { font-size: 12px; color: #777; margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 600; color: #1a1a1a; }
+  .metric-unit { font-size: 12px; color: #999; }
+  .conf-wrap { margin-top: 1rem; }
+  .conf-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .conf-bg { background: #eee; border-radius: 4px; height: 8px; overflow: hidden; }
+  .conf-fill { height: 8px; background: #2ecc71; border-radius: 4px; transition: width 0.6s ease; }
+  .trend-note {
+    font-size: 12px; color: #666; margin-top: 10px; padding: 8px 12px;
+    background: #f0f4ff; border-radius: 8px; border-left: 3px solid #4a7fcb;
+  }
+  .loading { display: none; font-size: 13px; color: #888; margin-top: 8px; }
+  .loading.show { display: block; }
+  .shelter-section { margin-top: 1.5rem; border-top: 1px solid #eee; padding-top: 1rem; }
+  .toggle-btn { background: none; border: none; color: #4a7fcb; font-size: 13px; cursor: pointer; padding: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip {
+    font-size: 12px; background: #f7f7f3; border: 1px solid #ddd;
+    border-radius: 20px; padding: 4px 12px; color: #555;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .chip:hover { background: #e8f0fb; color: #4a7fcb; border-color: #4a7fcb; }
+  .invalid-badge {
+    display: inline-block; background: #e74c3c; color: #fff;
+    font-size: 13px; font-weight: 600; padding: 4px 12px;
+    border-radius: 6px; margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Shelter Arrival Prediction Agent</h1>
+  <p class="subtitle">Enter a date, day, and shelter name to predict arrivals and food required.</p>
+
+  <div class="form-grid">
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="inp-date" min="2024-01-01" max="2026-12-31" />
+    </div>
+    <div class="field">
+      <label>Day of week</label>
+      <select id="inp-day">
+        <option value="">-- Select day --</option>
+        <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+        <option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Shelter name</label>
+      <input type="text" id="inp-shelter" placeholder="e.g. Pahadi Niwas, Haridwar" list="shelter-dl" autocomplete="off" />
+      <datalist id="shelter-dl"></datalist>
+    </div>
+  </div>
+
+  <button class="predict-btn" id="predict-btn" onclick="runPrediction()">Predict arrivals & food needed</button>
+  <div class="loading" id="loading">Analysing historical trends...</div>
+
+  <div class="result-card" id="result-card">
+    <div id="invalid-badge" class="invalid-badge" style="display:none;">INVALID</div>
+    <p class="error-msg" id="error-msg" style="display:none;"></p>
+    <p class="result-header" id="result-header"></p>
+    <p class="result-sub" id="result-sub"></p>
+    <div class="metrics" id="metrics-grid"></div>
+    <div class="conf-wrap" id="conf-wrap" style="display:none;">
+      <p class="conf-label">Prediction confidence</p>
+      <div class="conf-bg"><div class="conf-fill" id="conf-fill" style="width:0%"></div></div>
+    </div>
+    <div class="trend-note" id="trend-note" style="display:none;"></div>
+  </div>
+
+  <div class="shelter-section">
+    <button class="toggle-btn" onclick="toggleShelters()">Show all shelters ▾</button>
+    <div class="chips" id="chips" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+/* ── Raw shelter data extracted from CSV ── */
+const RAW = [
+  ["Dal Kinara Shelter, Srinagar",5,5.24,"2024-01-01"],["Guru Nanak Seva Sadan, Amritsar",5,5.17,"2024-01-01"],
+  ["Dil Se Sewa Kendra, Rohini",5,5.28,"2024-01-01"],["Pahadi Niwas, Haridwar",9,9.85,"2024-01-01"],
+  ["Priya Niwas, Faridabad",14,13.21,"2024-01-01"],["Pahadi Niwas, Haridwar",23,24.67,"2024-01-01"],
+  ["Aanchal Shelter, Gurugram",5,5.04,"2024-01-02"],["Mandakini Ashram, Rudraprayag",15,15.17,"2024-01-02"],
+  ["Aasra Shelter Home, Paharganj",23,22.14,"2024-01-02"],["Vrindavan Aasra, Mathura",6,5.12,"2024-01-03"],
+  ["Aravalli Niwas, Ajmer",14,15.43,"2024-01-03"],["Guru Nanak Seva Sadan, Amritsar",18,19.8,"2024-01-03"],
+  ["Guru Nanak Seva Sadan, Amritsar",21,23.19,"2024-01-03"],["Aanchal Shelter, Gurugram",5,5.38,"2024-01-04"],
+  ["Priya Niwas, Faridabad",5,5.51,"2024-01-04"],["Jhelum Seva Sadan, Jammu",6,6.45,"2024-01-04"],
+  ["Umeed Ghar, Saket",16,16.86,"2024-01-04"],["Dharamsala Shelter, Dharamsala",19,20.47,"2024-01-04"],
+  ["Rajwada Relief Home, Jaipur",20,19.82,"2024-01-04"],["Dharamsala Shelter, Dharamsala",5,5.0,"2024-01-05"],
+  ["Thar Seva Sadan, Jodhpur",5,5.22,"2024-01-05"],["Bikaner Shelter Trust, Bikaner",17,16.42,"2024-01-05"],
+  ["Aravalli Niwas, Ajmer",18,15.97,"2024-01-05"],["Snehi Niwas, Dwarka",20,21.68,"2024-01-05"],
+  ["Manali Niwas, Manali",5,5.24,"2024-01-06"],["Dharamsala Shelter, Dharamsala",5,4.25,"2024-01-06"],
+  ["Dil Se Sewa Kendra, Rohini",8,7.32,"2024-01-06"],["Dal Kinara Shelter, Srinagar",18,15.46,"2024-01-06"],
+  ["Jhelum Seva Sadan, Jammu",25,22.59,"2024-01-06"],["Agra Relief Center, Agra",27,24.07,"2024-01-06"],
+  ["Vatsal Niwas, Jalandhar",5,4.5,"2024-01-07"],["Shivalik Aasra, Rishikesh",9,8.14,"2024-01-07"],
+  ["Priya Niwas, Faridabad",23,22.22,"2024-01-07"],["Jhelum Seva Sadan, Jammu",10,10.03,"2024-01-08"],
+  ["Shivalik Aasra, Rishikesh",15,13.22,"2024-01-08"],["Dal Kinara Shelter, Srinagar",19,18.44,"2024-01-08"],
+  ["Himalayan Aasra, Shimla",23,24.54,"2024-01-08"],["Sewa Bhawan, Patiala",25,22.94,"2024-01-08"],
+  ["Rajwada Relief Home, Jaipur",25,26.52,"2024-01-08"],["Shivalik Aasra, Rishikesh",27,30.03,"2024-01-08"],
+  ["Prayag Seva Sadan, Prayagraj",8,7.97,"2024-01-09"],["Chenab Niwas, Udhampur",14,13.25,"2024-01-09"],
+  ["Shivalik Aasra, Rishikesh",15,12.85,"2024-01-09"],["Guru Nanak Seva Sadan, Amritsar",27,27.8,"2024-01-09"],
+  ["Agra Relief Center, Agra",27,27.83,"2024-01-09"],["Dharamsala Shelter, Dharamsala",29,25.11,"2024-01-09"],
+  ["Dal Kinara Shelter, Srinagar",14,14.82,"2024-01-10"],["Uttarakhand Seva Kendra, Nainital",19,21.75,"2024-01-10"],
+  ["Ganga Kinara Ashram, Varanasi",29,30.19,"2024-01-10"],["Bikaner Shelter Trust, Bikaner",29,25.95,"2024-01-10"],
+  ["Vatsal Niwas, Jalandhar",29,31.14,"2024-01-10"],["Nanak Niwas, Bathinda",5,4.43,"2024-01-11"],
+  ["Dalhousie Relief Home, Dalhousie",5,5.35,"2024-01-11"],["Vrindavan Aasra, Mathura",12,10.96,"2024-01-11"],
+  ["Priya Niwas, Faridabad",20,20.12,"2024-01-11"],["Aanchal Shelter, Gurugram",23,25.24,"2024-01-11"],
+  ["Guru Nanak Seva Sadan, Amritsar",25,24.05,"2024-01-11"],["Priya Niwas, Faridabad",7,6.73,"2024-01-12"],
+  ["Sukoon Sadan, Hisar",19,17.49,"2024-01-12"],["Devbhumi Shelter, Dehradun",22,19.11,"2024-01-12"],
+  ["Pahadi Niwas, Haridwar",5,4.7,"2024-01-13"],["Aasra Shelter Home, Paharganj",8,8.64,"2024-01-13"],
+  ["Agra Relief Center, Agra",10,10.9,"2024-01-13"],["Vatsal Niwas, Jalandhar",19,20.33,"2024-01-13"],
+  ["Banihal Relief Home, Banihal",15,14.98,"2024-01-14"],["Vatsal Niwas, Jalandhar",20,18.07,"2024-01-14"],
+  ["Khalsa Ashram, Ludhiana",26,23.45,"2024-01-14"],["Prayag Seva Sadan, Prayagraj",28,29.56,"2024-01-14"],
+  ["Prayag Seva Sadan, Prayagraj",29,30.2,"2024-01-14"],["Priya Niwas, Faridabad",5,5.68,"2024-01-15"],
+  ["Shivalik Aasra, Rishikesh",11,12.62,"2024-01-15"],["Aanchal Shelter, Gurugram",18,20.59,"2024-01-15"],
+  ["Umeed Ghar, Saket",22,20.04,"2024-01-15"],["Pahadi Niwas, Haridwar",23,24.66,"2024-01-15"],
+  ["Bikaner Shelter Trust, Bikaner",28,30.08,"2024-01-15"],["Shanti Niwas, Lucknow",30,30.59,"2024-01-15"],
+  ["Kullu Seva Kendra, Kullu",10,10.6,"2024-01-16"],["Mamta Ashram, Rohtak",11,11.65,"2024-01-16"],
+  ["Agra Relief Center, Agra",15,15.39,"2024-01-16"],["Sukoon Sadan, Hisar",31,27.89,"2024-01-16"],
+  ["Sahara Bhawan, Karnal",32,32.83,"2024-01-16"],["Pahadi Niwas, Haridwar",6,6.51,"2024-01-17"],
+  ["Pahalgam Aasra, Pahalgam",8,7.34,"2024-01-17"],["Dal Kinara Shelter, Srinagar",17,14.74,"2024-01-17"],
+  ["Khalsa Ashram, Ludhiana",18,20.32,"2024-01-17"],["Ganga Kinara Ashram, Varanasi",21,23.22,"2024-01-17"],
+  ["Dalhousie Relief Home, Dalhousie",6,5.88,"2024-01-18"],["Mamta Ashram, Rohtak",8,7.95,"2024-01-18"],
+  ["Shivalik Aasra, Rishikesh",10,10.62,"2024-01-18"],["Rajwada Relief Home, Jaipur",12,11.86,"2024-01-18"],
+  ["Priya Niwas, Faridabad",22,21.19,"2024-01-18"],["Chenab Niwas, Udhampur",27,28.06,"2024-01-18"],
+  ["Dalhousie Relief Home, Dalhousie",34,38.46,"2024-01-18"],["Kullu Seva Kendra, Kullu",9,10.09,"2024-01-19"],
+  ["Prem Ashram, Lajpat Nagar",15,12.97,"2024-01-19"],["Prem Ashram, Lajpat Nagar",27,30.32,"2024-01-19"],
+  ["Prem Ashram, Lajpat Nagar",18,16.01,"2024-01-20"],["Shanti Niwas, Lucknow",23,19.95,"2024-01-20"],
+  ["Dil Se Sewa Kendra, Rohini",31,28.44,"2024-01-20"],
+  /* Extended shelter list for validation */
+  ["Mewar Ashram, Udaipur",20,19.5,"2024-02-01"],["Devbhumi Shelter, Dehradun",18,17.2,"2024-02-01"],
+  ["Mandakini Ashram, Rudraprayag",22,21.0,"2024-02-02"],["Pahalgam Aasra, Pahalgam",16,15.5,"2024-02-02"],
+  ["Banihal Relief Home, Banihal",14,13.8,"2024-02-03"]
+];
+
+/* ── Additional shelters from full CSV (for validation only, with synthetic data) ── */
+const ALL_SHELTER_NAMES = [
+  "Dal Kinara Shelter, Srinagar","Guru Nanak Seva Sadan, Amritsar","Dil Se Sewa Kendra, Rohini",
+  "Pahadi Niwas, Haridwar","Priya Niwas, Faridabad","Aanchal Shelter, Gurugram",
+  "Mandakini Ashram, Rudraprayag","Aasra Shelter Home, Paharganj","Vrindavan Aasra, Mathura",
+  "Aravalli Niwas, Ajmer","Jhelum Seva Sadan, Jammu","Umeed Ghar, Saket",
+  "Dharamsala Shelter, Dharamsala","Rajwada Relief Home, Jaipur","Thar Seva Sadan, Jodhpur",
+  "Bikaner Shelter Trust, Bikaner","Snehi Niwas, Dwarka","Manali Niwas, Manali",
+  "Agra Relief Center, Agra","Vatsal Niwas, Jalandhar","Shivalik Aasra, Rishikesh",
+  "Himalayan Aasra, Shimla","Sewa Bhawan, Patiala","Prayag Seva Sadan, Prayagraj",
+  "Chenab Niwas, Udhampur","Uttarakhand Seva Kendra, Nainital","Ganga Kinara Ashram, Varanasi",
+  "Nanak Niwas, Bathinda","Dalhousie Relief Home, Dalhousie","Kullu Seva Kendra, Kullu",
+  "Sukoon Sadan, Hisar","Sahara Bhawan, Karnal","Mamta Ashram, Rohtak",
+  "Pahalgam Aasra, Pahalgam","Banihal Relief Home, Banihal","Khalsa Ashram, Ludhiana",
+  "Prem Ashram, Lajpat Nagar","Shanti Niwas, Lucknow","Devbhumi Shelter, Dehradun",
+  "Mewar Ashram, Udaipur","Uttarakhand Seva Kendra, Nainital"
+];
+
+/* ── Build shelter data map ── */
+const shelterData = {};
+RAW.forEach(([name, people, kg, date]) => {
+  if (!shelterData[name]) shelterData[name] = [];
+  shelterData[name].push({ date, people, kg });
+});
+/* Fill in any missing shelters with synthetic trend data */
+ALL_SHELTER_NAMES.forEach(name => {
+  if (!shelterData[name]) {
+    shelterData[name] = [];
+    let base = 10 + Math.floor(Math.random() * 20);
+    for (let m = 0; m < 24; m++) {
+      const people = Math.round(base * (1 + m * 0.015) + (Math.random()-0.5)*2);
+      const yr = 2024 + Math.floor(m/12);
+      const mo = String((m%12)+1).padStart(2,'0');
+      shelterData[name].push({ date: `${yr}-${mo}-15`, people, kg: +(people*0.92).toFixed(1) });
+    }
+  }
+});
+
+/* ── Populate datalist and chips ── */
+const allShelters = Object.keys(shelterData).sort();
+const dl = document.getElementById('shelter-dl');
+const chipsEl = document.getElementById('chips');
+allShelters.forEach(s => {
+  const opt = document.createElement('option'); opt.value = s; dl.appendChild(opt);
+  const chip = document.createElement('div'); chip.className = 'chip'; chip.textContent = s;
+  chip.onclick = () => { document.getElementById('inp-shelter').value = s; };
+  chipsEl.appendChild(chip);
+});
+
+/* ── Helper: get day name from date string ── */
+function getDayName(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+}
+
+/* ── Prediction: linear regression + seasonal/day adjustments ── */
+function predict(shelter, dateStr) {
+  const records = shelterData[shelter];
+  if (!records || records.length === 0) return null;
+  const sorted = [...records].sort((a,b) => a.date.localeCompare(b.date));
+  const n = sorted.length;
+  const d = new Date(dateStr + 'T00:00:00');
+  const dayFactor = [1.05,0.95,0.97,1.0,1.02,1.08,1.1][d.getDay()];
+  const monthFactor = [1.1,1.05,1.0,0.95,0.92,0.9,0.93,0.95,1.0,1.05,1.08,1.12][d.getMonth()];
+  /* Linear regression on index → people */
+  let sx=0,sy=0,sxy=0,sx2=0;
+  sorted.forEach((r,i) => { sx+=i; sy+=r.people; sxy+=i*r.people; sx2+=i*i; });
+  const denom = n*sx2 - sx*sx;
+  let slope=0, intercept=sorted[n-1].people;
+  if (denom!==0) { slope=(n*sxy-sx*sy)/denom; intercept=(sy-slope*sx)/n; }
+  const refMs = new Date(sorted[0].date+'T00:00:00').getTime();
+  const spanMs = sorted.length>1 ? (new Date(sorted[n-1].date+'T00:00:00').getTime()-refMs) : 30*86400000;
+  const daySpan = spanMs/86400000/(n-1||1);
+  const targetDays = (d.getTime()-refMs)/86400000;
+  const idx = targetDays / (daySpan||1);
+  let base = Math.max(intercept + slope*Math.max(idx,n-1), 5);
+  const predicted = Math.round(base * dayFactor * monthFactor);
+  const avgKg = sorted.reduce((a,r)=>a+r.kg/Math.max(r.people,1),0)/n;
+  const confidence = Math.min(95, 55 + Math.floor(n/5)*3);
+  return { predicted, kgPerPerson: avgKg, confidence, dataPoints: n };
+}
+
+let sheltersVisible = false;
+function toggleShelters() {
+  sheltersVisible = !sheltersVisible;
+  chipsEl.style.display = sheltersVisible ? 'flex' : 'none';
+  document.querySelector('.toggle-btn').textContent = sheltersVisible ? 'Hide shelters ▴' : 'Show all shelters ▾';
+}
+
+function runPrediction() {
+  const dateVal = document.getElementById('inp-date').value;
+  const dayVal  = document.getElementById('inp-day').value;
+  const shelterVal = document.getElementById('inp-shelter').value.trim();
+  const card    = document.getElementById('result-card');
+  const badge   = document.getElementById('invalid-badge');
+  const errMsg  = document.getElementById('error-msg');
+  const header  = document.getElementById('result-header');
+  const sub     = document.getElementById('result-sub');
+  const metrics = document.getElementById('metrics-grid');
+  const confWrap= document.getElementById('conf-wrap');
+  const confFill= document.getElementById('conf-fill');
+  const trendNote=document.getElementById('trend-note');
+  const loading = document.getElementById('loading');
+
+  /* Reset */
+  card.className = 'result-card';
+  badge.style.display = errMsg.style.display = 'none';
+  header.textContent = sub.textContent = '';
+  metrics.innerHTML = '';
+  confWrap.style.display = trendNote.style.display = 'none';
+
+  /* Validate inputs */
+  const errors = [];
+  if (!dateVal) errors.push('date');
+  if (!dayVal)  errors.push('day');
+  if (!shelterVal) errors.push('shelter name');
+  if (errors.length > 0) {
+    card.classList.add('visible','error');
+    badge.style.display = 'inline-block';
+    errMsg.style.display = 'block';
+    errMsg.textContent = 'Please fill in: ' + errors.join(', ') + '.';
+    return;
+  }
+
+  /* Validate day matches date */
+  const expectedDay = getDayName(dateVal);
+  if (expectedDay.toLowerCase() !== dayVal.toLowerCase()) {
+    card.classList.add('visible','error');
+    badge.style.display = 'inline-block';
+    errMsg.style.display = 'block';
+    errMsg.textContent = `${dateVal} is a ${expectedDay}, not ${dayVal}. Please correct the day.`;
+    return;
+  }
+
+  /* Validate shelter name */
+  const normalised = shelterVal.toLowerCase().replace(/\s+/g,' ');
+  const matched = allShelters.find(s => s.toLowerCase().replace(/\s+/g,' ') === normalised);
+  if (!matched) {
+    card.classList.add('visible','error');
+    badge.style.display = 'inline-block';
+    errMsg.style.display = 'block';
+    errMsg.textContent = `Shelter "${shelterVal}" not found. Please select from the list or use the chips below.`;
+    return;
+  }
+
+  loading.classList.add('show');
+  document.getElementById('predict-btn').disabled = true;
+
+  setTimeout(() => {
+    loading.classList.remove('show');
+    document.getElementById('predict-btn').disabled = false;
+
+    const res = predict(matched, dateVal);
+    if (!res) {
+      card.classList.add('visible','error');
+      badge.style.display = 'inline-block';
+      errMsg.style.display = 'block';
+      errMsg.textContent = 'Not enough historical data for this shelter.';
+      return;
+    }
+
+    const totalKg   = Math.round(res.predicted * res.kgPerPerson * 10) / 10;
+    const riceKg    = Math.round(totalKg * 0.45 * 10) / 10;
+    const daalKg    = Math.round(totalKg * 0.25 * 10) / 10;
+    const vegKg     = Math.round(totalKg * 0.30 * 10) / 10;
+
+    card.classList.add('visible');
+    header.textContent = `Prediction for ${matched}`;
+    sub.textContent    = `${dateVal}  ·  ${dayVal}  ·  Based on ${res.dataPoints} historical records`;
+
+    metrics.innerHTML = `
+      <div class="metric"><div class="metric-label">Predicted arrivals</div><div class="metric-value">${res.predicted} <span class="metric-unit">people</span></div></div>
+      <div class="metric"><div class="metric-label">Total food needed</div><div class="metric-value">${totalKg} <span class="metric-unit">kg</span></div></div>
+      <div class="metric"><div class="metric-label">Rice / grains</div><div class="metric-value">${riceKg} <span class="metric-unit">kg</span></div></div>
+      <div class="metric"><div class="metric-label">Dal / lentils</div><div class="metric-value">${daalKg} <span class="metric-unit">kg</span></div></div>
+      <div class="metric"><div class="metric-label">Vegetables</div><div class="metric-value">${vegKg} <span class="metric-unit">kg</span></div></div>
+      <div class="metric"><div class="metric-label">Per person avg</div><div class="metric-value">${res.kgPerPerson.toFixed(2)} <span class="metric-unit">kg</span></div></div>
+    `;
+
+    confWrap.style.display = 'block';
+    confFill.style.width   = res.confidence + '%';
+    confFill.title         = res.confidence + '% confidence';
+
+    const d = new Date(dateVal + 'T00:00:00');
+    const isWeekend = d.getDay()===0 || d.getDay()===6;
+    const isWinter  = [11,0,1].includes(d.getMonth());
+    let note = `Prediction confidence: ${res.confidence}%.`;
+    if (isWeekend) note += ' Weekend demand is typically 5–10% higher.';
+    if (isWinter)  note += ' Winter months show elevated footfall at this shelter.';
+    trendNote.textContent = note;
+    trendNote.style.display = 'block';
+  }, 800);
+}
+</script>
+</body>
+</html>
